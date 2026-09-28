@@ -10,6 +10,8 @@ on:
 
 env:
   DockerImageName: todoapp
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
 jobs:
   deploy:
@@ -42,7 +44,7 @@ jobs:
             --debug \
             --namespace todoapp \
             --create-namespace \
-            --set todoapp.image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }} \
+            --set todoapp.image.repository=${{ env.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }} \
             --set todoapp.image.tag=${{ github.sha }}
 
       - name: Helm upgrade --install
@@ -53,5 +55,5 @@ jobs:
             --timeout 5m \
             --namespace todoapp \
             --create-namespace \
-            --set todoapp.image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }} \
+            --set todoapp.image.repository=${{ env.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }} \
             --set todoapp.image.tag=${{ github.sha }}
