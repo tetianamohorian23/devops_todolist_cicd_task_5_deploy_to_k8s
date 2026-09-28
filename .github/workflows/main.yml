@@ -118,3 +118,20 @@ jobs:
       with:
         name: helm-package
         path: ./*.tgz
+  deploy-development:
+    name: Deploy to development
+    needs: [python-ci, docker-ci, helm-ci]
+    if: ${{ github.ref_name == 'main' }}
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: development
+    secrets: inherit
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: [python-ci, docker-ci, helm-ci]
+    if: ${{ github.ref_name == 'main' }}
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+    secrets: inherit
