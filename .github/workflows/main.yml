@@ -1,6 +1,6 @@
 name: python-deployment
 
-run-name: ${{ github.actor }} - ${{ github.ref_name}} -${{ github.sha }}
+run-name: ${{ github.actor }} - ${{ github.ref_name }} - ${{ github.sha }}
 
 on:
   push:
@@ -15,9 +15,11 @@ env:
 jobs:
   python-ci:
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./src
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,7 +59,6 @@ jobs:
           path: .
 
       - name: Upload helm artifacts
-        if: github.ref_name == 'main'
         uses: actions/upload-artifact@v4
         with:
           name: helm-artifacts
@@ -66,62 +67,70 @@ jobs:
   docker-ci:
     name: Build and Push Image
     runs-on: ubuntu-latest
-    if: ${{ github.ref_name == 'main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: python-ci
+
     steps:
+      - name: Download python artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-artifacts
+          path: .
 
-    - uses: actions/download-artifact@v4
-      name: Download python artifacts
-      with:
-        name: python-artifacts
-        path: .
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    - name: Build and push
-      uses: docker/build-push-action@v5
-      with:
-        push: true
-        context: ./src
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:${{ github.sha }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          context: ./src
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:${{ github.sha }}
 
   helm-ci:
+    name: Helm CI
     runs-on: ubuntu-latest
     needs: python-ci
-    if: github.ref_name == 'main'
-    name: Helm CI
+
     steps:
+      - name: Download helm artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-artifacts
+          path: .
 
-    - uses: actions/download-artifact@v4
-      with:
-        name: helm-artifacts
-        path: .
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.2.0
 
-    - name: Set Up Helm
-      uses: azure/setup-helm@v4.2.0
+      - name: Build Helm dependencies
+        run: |
+          helm dependency build ./helm-charts/todoapp
 
-    - name: Lint helm
-      run: helm lint ./todoapp/
+      - name: Lint Helm
+        run: |
+          helm lint ./helm-charts/todoapp
 
-    - name: Template Helm
-      run: helm template todoapp ./todoapp/ -f ./todoapp/values.yaml
+      - name: Template Helm
+        run: |
+          helm template todoapp ./helm-charts/todoapp -f ./helm-charts/todoapp/values.yaml
 
-    - name: Package Helm
-      run: helm package ./todoapp
+      - name: Package Helm
+        run: |
+          helm package ./helm-charts/todoapp
 
-    - name: Upload Helm Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: helm-package
-        path: ./*.tgz
+      - name: Upload Helm Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-package
+          path: ./*.tgz
+
   deploy-development:
     name: Deploy to development
     needs: [python-ci, docker-ci, helm-ci]
-    if: ${{ github.ref_name == 'main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     uses: ./.github/workflows/deploy.yml
     with:
       environment: development
@@ -130,7 +139,7 @@ jobs:
   deploy-staging:
     name: Deploy to staging
     needs: [python-ci, docker-ci, helm-ci]
-    if: ${{ github.ref_name == 'main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     uses: ./.github/workflows/deploy.yml
     with:
       environment: staging
