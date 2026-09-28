@@ -70,6 +70,13 @@ jobs:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: python-ci
 
+    environment:
+      name: development
+
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
     steps:
       - name: Download python artifacts
         uses: actions/download-artifact@v4
@@ -80,15 +87,15 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           push: true
           context: ./src
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:${{ github.sha }}
+          tags: ${{ env.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:${{ github.sha }}
 
   helm-ci:
     name: Helm CI
@@ -96,34 +103,64 @@ jobs:
     needs: python-ci
 
     steps:
-    - name: Download helm artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: helm-artifacts
-        path: .
+      - name: Download helm artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-artifacts
+          path: .
 
-    - name: Debug Helm artifact structure
-      run: |
-        echo "Current directory:"
-        pwd
-        echo "Files and directories:"
-        find . -maxdepth 4 -type f | sort
+      - name: Debug Helm artifact structure
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Files and directories:"
+          find . -maxdepth 4 -type f | sort
 
-    - name: Set up Helm
-      uses: azure/setup-helm@v4.2.0
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.2.0
 
-    - name: Build Helm dependencies
-      run: |
-        helm dependency build ./todoapp
+      - name: Build Helm dependencies
+        run: |
+          helm dependency build ./helm-charts/todoapp
 
-    - name: Lint Helm
-      run: |
-        helm lint ./todoapp
+      - name: Lint Helm
+        run: |
+          helm lint ./helm-charts/todoapp
 
-    - name: Template Helm
-      run: |
-        helm template todoapp ./todoapp -f ./todoapp/values.yaml
+      - name: Template Helm
+        run: |
+          helm template todoapp ./helm-charts/todoapp -f ./helm-charts/todoapp/values.yaml
 
-    - name: Package Helm
-      run: |
-        helm package ./todoapp
+      - name: Package Helm
+        run: |
+          helm package ./helm-charts/todoapp
+
+  deploy-development:
+    name: Deploy to development
+    needs:
+      - python-ci
+      - docker-ci
+      - helm-ci
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    uses: ./.github/workflows/deploy.yml
+
+    with:
+      environment: development
+
+    secrets: inherit
+
+  deploy-staging:
+    name: Deploy to staging
+    needs:
+      - python-ci
+      - docker-ci
+      - helm-ci
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    uses: ./.github/workflows/deploy.yml
+
+    with:
+      environment: staging
+
+    secrets: inherit
